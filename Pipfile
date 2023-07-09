@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+scipy = "*"
+scikit-learn = "*"
+pandas = "*"
+colorlog = "*"
+lightgbm = "*"
+xgboost = "*"
+catboost = "*"
+wandb = "*"
+timm = "*"
+numpy = "*"
+einops = "*"
+torch = "*"
+
+[dev-packages]
+ipdb = "*"
+black = "*"
+
+[requires]
+python_version = "3.11"
