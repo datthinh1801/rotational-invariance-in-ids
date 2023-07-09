@@ -1,5 +1,4 @@
 import logging
-import pickle
 
 from pathlib import Path
 from datetime import datetime
@@ -15,6 +14,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from configs import *
 from data_transform import preprocess_data, apply_random_rotation, feature_selection
 from models import ModelFactory
+from models.utils import save_model_to_file
 
 
 def create_logger():
@@ -42,11 +42,6 @@ def create_logger():
     logger.addHandler(handler)
 
     return logger
-
-
-def save_model_to_file(model, filename):
-    with open(filename, "wb") as file:
-        pickle.dump(model, file)
 
 
 def load_model_from_file(filename):
@@ -122,8 +117,8 @@ if __name__ == "__main__":
         )
 
         # feature selection
-        # logger.info("Selecting best features")
-        # X, y = feature_selection(X, y, seed=seed)
+        logger.info("Selecting best features")
+        X, y = feature_selection(X, y, seed=seed)
 
         # train test split
         logger.info("Splitting train/test sets")
@@ -171,7 +166,7 @@ if __name__ == "__main__":
 
             accuracy, precision, recall, f1 = evaluate_model(model, X_test, y_test)
             logger.info(
-                f"Accuracy: {accuracy} - Precision: {precision} - Recall: {recall} - F1-score: {f1}"
+                f"Accuracy: {accuracy:.4f} - Precision: {precision:.4f} - Recall: {recall:.4f} - F1-score: {f1:.4f}"
             )
             wandb.log(
                 {
@@ -203,7 +198,7 @@ if __name__ == "__main__":
                     model, X_test_rotated, y_test
                 )
                 logger.info(
-                    f"Accuracy: {accuracy} - Precision: {precision} - Recall: {recall} - F1-score: {f1}"
+                    f"Accuracy: {accuracy:.4f} - Precision: {precision:.4f} - Recall: {recall:.4f} - F1-score: {f1:.4f}"
                 )
                 wandb.log(
                     {

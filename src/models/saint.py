@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import ipdb
 
+from pathlib import Path
+
 from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -9,10 +11,12 @@ from ipdb import set_trace
 from sklearn.metrics import accuracy_score
 
 from .saint_lib import SAINT, DataSetCatCon, embed_data_mask, data_prep_openml
+from .utils import save_model_to_file, load_model_from_file
 
 
 class SAINTModel:
     def __init__(self):
+        self.model_name = "saint"
         self.cont_embeddings = "MLP"
         self.embedding_size = 32
         self.transformer_depth = 6
@@ -27,6 +31,31 @@ class SAINTModel:
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print(f"Device in use: {self.device}")
+
+    def embed_input(self, data):
+        # x_categ is the the categorical data,
+        # x_cont has continuous data,
+        # y_gts has ground truth ys.
+        # cat_mask is an array of ones same shape as x_categ and an additional column(corresponding to CLS token) set to 0s.
+        # con_mask is an array of ones same shape as x_cont.
+        x_categ, x_cont, y_gts, cat_mask, con_mask = (
+            data[0].to(self.device),
+            data[1].to(self.device),
+            data[2].to(self.device),
+            data[3].to(self.device),
+            data[4].to(self.device),
+        )
+
+        # We are converting the data to embeddings in the next step
+        _, x_categ_enc, x_cont_enc = embed_data_mask(
+            x_categ, x_cont, cat_mask, con_mask, self.model
+        )
+        reps = self.model.transformer(x_categ_enc, x_cont_enc)
+
+        # select only the representations corresponding to CLS token and apply mlp on it in the next step to get the predictions.
+        y_reps = reps[:, 0, :]
+
+        return y_reps, y_gts
 
     def fit(
         self,
@@ -67,8 +96,7 @@ class SAINTModel:
         trainloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
         n_classes = len(np.unique(y_train["data"][:, 0]))
-        if n_classes > 2:
-            self.y_dim = n_classes
+        self.y_dim = 1 if n_classes == 2 else n_classes
 
         # Appending 1 for CLS token, this is later used to generate embeddings.
         cat_dims = np.append(np.array([1]), np.array(cat_dims)).astype(int)
@@ -93,59 +121,40 @@ class SAINTModel:
         criterion = nn.BCEWithLogitsLoss().to(self.device)
         optimizer = AdamW(self.model.parameters(), lr=lr)
 
+        min_loss = float("inf")
+        best_model_path = Path(f"{self.model_name}_best.pkl")
+
         for epoch in range(epochs):
             self.model.train()
-            running_loss = 0.0
-            running_accuracy = 0.0
-            batch_accuracy = 0.0
 
-            for i, data in enumerate(trainloader, 0):
+            running_loss = 0.0
+            running_corrects = 0.0
+
+            for data in trainloader:
                 optimizer.zero_grad()
 
-                # x_categ is the the categorical data,
-                # x_cont has continuous data,
-                # y_gts has ground truth ys.
-                # cat_mask is an array of ones same shape as x_categ and an additional column(corresponding to CLS token) set to 0s.
-                # con_mask is an array of ones same shape as x_cont.
-                x_categ, x_cont, y_gts, cat_mask, con_mask = (
-                    data[0].to(self.device),
-                    data[1].to(self.device),
-                    data[2].to(self.device),
-                    data[3].to(self.device),
-                    data[4].to(self.device),
-                )
+                y_reps, y_gts = self.embed_input(data)
 
-                # We are converting the data to embeddings in the next step
-                _, x_categ_enc, x_cont_enc = embed_data_mask(
-                    x_categ, x_cont, cat_mask, con_mask, self.model
-                )
-                reps = self.model.transformer(x_categ_enc, x_cont_enc)
-
-                # select only the representations corresponding to CLS token and apply mlp on it in the next step to get the predictions.
-                y_reps = reps[:, 0, :]
-
-                y_outs = self.model.mlpfory(y_reps).squeeze().to(torch.float32)
-                y_gts = y_gts.squeeze().to(torch.float32)
+                y_outs = self.model.mlpfory(y_reps)
+                y_gts = y_gts.to(torch.float32)
 
                 loss = criterion(y_outs, y_gts)
                 loss.backward()
                 optimizer.step()
-
                 running_loss += loss.item()
 
-                # Calculate accuracy for the current batch
-                predicted_labels = (
-                    torch.sigmoid(y_outs) > 0.5
-                ).float()  # Apply sigmoid and threshold for binary prediction
-                batch_accuracy = (predicted_labels == y_gts).sum().item() / len(y_gts)
+                if loss.item() < min_loss:
+                    # save the best model
+                    min_loss = loss.item()
+                    save_model_to_file(self, best_model_path)
 
-                running_loss += loss.item()
-                running_accuracy += batch_accuracy
+                predicted_labels = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
+                running_corrects += (predicted_labels == y_gts).sum()
 
-            epoch_accuracy = running_accuracy / (X_train["data"].shape[0] / batch_size)
+            epoch_accuracy = running_corrects / X_train["data"].shape[0]
             epoch_loss = running_loss / (X_train["data"].shape[0] / batch_size)
             print(
-                f"Epoch: {epoch} - loss value: {epoch_loss} - accuracy: {epoch_accuracy}"
+                f"Epoch {epoch}/{epochs} - loss value: {epoch_loss:.4f} - accuracy: {epoch_accuracy:.4f}"
             )
 
         try:
@@ -153,6 +162,10 @@ class SAINTModel:
             torch.cuda.empty_cache()
         except:
             pass
+
+        if best_model_path.exists():
+            self = load_model_from_file(best_model_path)
+            best_model_path.unlink()
 
     def predict(self, X_test):
         X = {"data": X_test, "mask": np.ones_like(X_test)}
@@ -166,24 +179,10 @@ class SAINTModel:
 
         with torch.no_grad():
             for data in testloader:
-                x_categ, x_cont, y_gts, cat_mask, con_mask = (
-                    data[0].to(self.device),
-                    data[1].to(self.device),
-                    data[2].to(self.device),
-                    data[3].to(self.device),
-                    data[4].to(self.device),
-                )
-
-                _, x_categ_enc, x_cont_enc = embed_data_mask(
-                    x_categ, x_cont, cat_mask, con_mask, self.model
-                )
-                reps = self.model.transformer(x_categ_enc, x_cont_enc)
-
-                # select only the representations corresponding to CLS token and apply mlp on it in the next step to get the predictions.
-                y_reps = reps[:, 0, :]
+                y_reps, _ = self.embed_input(data)
                 y_outs = self.model.mlpfory(y_reps)
 
-                y_preds = torch.argmax(y_outs, dim=1).float()
+                y_preds = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
                 preds = torch.cat([preds, y_preds], dim=0)
 
         return preds.cpu().numpy()
