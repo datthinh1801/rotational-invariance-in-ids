@@ -1,5 +1,5 @@
 .venv/
-data/
+data/*.csv
 wandb/
 catboost_info/
-models_out/
+models_out/*.pkl
