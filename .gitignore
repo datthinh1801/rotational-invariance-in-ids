@@ -3,3 +3,4 @@ data/*.csv
 wandb/
 catboost_info/
 models_out/*.pkl
+*.pkl
