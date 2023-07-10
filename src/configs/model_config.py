@@ -1,5 +1,8 @@
-EPOCHS = 1
+BATCH_SIZE = 512
+EPOCHS = 50
+LR = 0.001
 MAX_DEPTH = 5
+
 MODEL_CONFIG = {
     "xgb": {
         "hyperparams": {
@@ -12,17 +15,17 @@ MODEL_CONFIG = {
         "hyperparams": {
             "max_depth": MAX_DEPTH,
             "task_type": "GPU",
-            "learning_rate": 0.001,
+            "learning_rate": LR,
         },
         "train_config": {"verbose": False},
     },
     "lgbm": {"hyperparams": {"max_depth": MAX_DEPTH}},
     "dt": {"hyperparams": {"max_depth": MAX_DEPTH}},
     "rf": {"hyperparams": {"max_depth": MAX_DEPTH}},
-    "resnet": {"train_config": {"epochs": EPOCHS, "batch_size": 1024, "lr": 0.001}},
-    "saint": {"train_config": {"lr": 0.001, "epochs": EPOCHS, "batch_size": 1024}},
+    "resnet": {"train_config": {"epochs": EPOCHS, "batch_size": BATCH_SIZE, "lr": LR}},
+    "saint": {"train_config": {"lr": LR, "epochs": EPOCHS, "batch_size": BATCH_SIZE}},
     "mlp": {
         "hyperparams": {"hidden_size": 256},
-        "train_config": {"epochs": EPOCHS, "batch_size": 1024},
+        "train_config": {"epochs": EPOCHS, "batch_size": BATCH_SIZE, "lr": LR},
     },
 }

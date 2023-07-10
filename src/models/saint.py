@@ -121,7 +121,7 @@ class SAINTModel:
         criterion = nn.BCEWithLogitsLoss().to(self.device)
         optimizer = AdamW(self.model.parameters(), lr=lr)
 
-        min_loss = float("inf")
+        max_acc = 0
         best_model_path = Path(f"{self.model_name}_best.pkl")
 
         for epoch in range(epochs):
@@ -143,11 +143,6 @@ class SAINTModel:
                 optimizer.step()
                 running_loss += loss.item()
 
-                if loss.item() < min_loss:
-                    # save the best model
-                    min_loss = loss.item()
-                    save_model_to_file(self, best_model_path)
-
                 predicted_labels = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == y_gts).sum()
 
@@ -156,6 +151,10 @@ class SAINTModel:
             print(
                 f"Epoch {epoch}/{epochs} - loss value: {epoch_loss:.4f} - accuracy: {epoch_accuracy:.4f}"
             )
+
+            if epoch_accuracy > max_acc:
+                max_acc = epoch_accuracy
+                save_model_to_file(self, best_model_path)
 
         try:
             logger.info("Cleaning up CUDA memory")

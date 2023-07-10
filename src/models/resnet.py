@@ -44,7 +44,7 @@ class ResNet:
 
         self.model.train()
 
-        min_loss = float("inf")
+        max_acc = 0
         best_model_path = Path(f"{self.model_name}_best.pkl")
 
         for epoch in range(epochs):
@@ -64,10 +64,6 @@ class ResNet:
                 optimizer.step()
                 running_loss += loss.item()
 
-                if loss.item() < min_loss:
-                    min_loss = loss.item()
-                    save_model_to_file(self, best_model_path)
-
                 predicted_labels = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == labels).sum()
 
@@ -76,6 +72,10 @@ class ResNet:
             print(
                 f"Epoch {epoch}/{epochs} - loss value: {epoch_loss} - accuracy: {epoch_accuracy}"
             )
+
+            if epoch_accuracy > max_acc:
+                max_acc = epoch_accuracy
+                save_model_to_file(self, best_model_path)
 
         try:
             logger.info("Cleaning up CUDA memory")

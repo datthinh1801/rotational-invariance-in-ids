@@ -57,8 +57,8 @@ class MLPModel:
         criterion = nn.BCEWithLogitsLoss().to(self.device)
         optimizer = optim.AdamW(self.model.parameters(), lr=lr)
 
+        max_acc = 0
         best_model_path = Path(f"{self.model_name}_best.pkl")
-        min_loss = float("inf")
 
         self.model.train()
 
@@ -84,10 +84,6 @@ class MLPModel:
                 # Compute statistics
                 running_loss += loss.item()
 
-                if loss.item() < min_loss:
-                    min_loss = loss.item()
-                    save_model_to_file(self, best_model_path)
-
                 # calculate accuracy for the current batch
                 predicted_labels = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == targets).sum()
@@ -100,6 +96,20 @@ class MLPModel:
             print(
                 f"Epoch {epoch}/{epochs} - loss: {epoch_loss:.4f} - accuracy: {epoch_acc:.4f}"
             )
+
+            if epoch_acc > max_acc:
+                max_acc = epoch_acc
+                save_model_to_file(self, best_model_path)
+
+        try:
+            logger.info("Cleaning up CUDA memory")
+            torch.cuda.empty_cache()
+        except:
+            pass
+
+        if best_model_path.exists():
+            self = load_model_from_file(best_model_path)
+            best_model_path.unlink()
 
     def predict(self, X_test):
         X = torch.from_numpy(X_test).to(torch.float32).to(self.device)
