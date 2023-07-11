@@ -16,6 +16,7 @@ timm = "*"
 numpy = "*"
 einops = "*"
 torch = "*"
+seaborn = "*"
 
 [dev-packages]
 ipdb = "*"

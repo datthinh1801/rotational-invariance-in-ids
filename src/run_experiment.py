@@ -62,7 +62,9 @@ def train_model(
     return model
 
 
-def evaluate_model(model, X_test, y_test):
+def evaluate_model(
+    model, X_test, y_test, class_list, iteration, rotation: bool = False
+):
     """
     Evaluate a model on test data and calculate accuracy, precision, recall, and f1 score.
 
@@ -86,7 +88,39 @@ def evaluate_model(model, X_test, y_test):
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
 
-    return accuracy, precision, recall, f1
+    if rotation:
+        # log the results
+        wandb.log(
+            {
+                "confusion_matrix_rotation": wandb.plot.confusion_matrix(
+                    preds=y_pred,
+                    y_true=y_test,
+                    class_names=class_list,
+                    title="Confusion matrix with rotation",
+                ),
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1-score": f1,
+                "iteration": iteration,
+            }
+        )
+    else:
+        wandb.log(
+            {
+                "confusion_matrix_no_rotation": wandb.plot.confusion_matrix(
+                    preds=y_pred,
+                    y_true=y_test,
+                    class_names=class_list,
+                    title="Confusion matrix without rotation",
+                ),
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1-score": f1,
+                "iteration": iteration,
+            }
+        )
 
 
 if __name__ == "__main__":
@@ -104,16 +138,18 @@ if __name__ == "__main__":
     data_configs = DATA_CONFIG.get("datasets", [])
     for data_config in data_configs:
         # load the data
-        logger.info(f"Loading {data_config.get('name')} dataset")
+        data_name = data_config.get("name")
+        logger.info(f"Loading {data_name} dataset")
         raw_data = pd.read_csv(data_config.get("path"))
 
         X = raw_data.drop(columns=[data_config.get("target")])
         y = raw_data[data_config.get("target")]
+        class_list = data_config.get("classes")
 
         # preprocess data
         logger.info("Preprocessing the data")
-        X, y, label_encoder = preprocess_data(
-            X, y, drop_cols=data_config["dropped_cols"], seed=seed
+        X, y = preprocess_data(
+            X, y, class_list, drop_cols=data_config["dropped_cols"], seed=seed
         )
 
         # feature selection
@@ -129,54 +165,35 @@ if __name__ == "__main__":
         # load model
         model_factory = ModelFactory()
         for model_name, init_method in model_factory.loop_model():
-            WANDB_CONFIG[
-                "name"
-            ] = f"{data_config.get('name')}_{model_name}_{wandb_run_name_suffix}"
-            wandb.init(**WANDB_CONFIG)
-            wandb_config = {
-                "data_name": data_config.get("name"),
-                "model": model_name,
-                "n_features": X.shape[1],
-                "test_size": test_size,
-                "seed": seed,
-            }
+            WANDB_CONFIG["name"] = f"{data_name}_{model_name}_{wandb_run_name_suffix}"
 
             # init model
             model_config = MODEL_CONFIG.get(model_name, {})
             model_hyperparams = model_config.get("hyperparams", {})
             train_config = model_config.get("train_config", {})
 
-            wandb_config.update(model_hyperparams)
-            wandb_config.update(train_config)
+            with wandb.init(
+                **WANDB_CONFIG,
+                config={"dataset": data_name, "model": model_name, "rotation": 0},
+            ):
+                # train without rotation
+                logger.info(f"Training {model_name} without rotation")
+                model = train_model(
+                    model_init=init_method,
+                    hyperparams=model_hyperparams,
+                    train_config=train_config,
+                    X_train=X_train,
+                    y_train=y_train,
+                )
 
-            # train without rotation
-            logger.info(f"Training {model_name} without rotation")
-            model = train_model(
-                model_init=init_method,
-                hyperparams=model_hyperparams,
-                train_config=train_config,
-                X_train=X_train,
-                y_train=y_train,
-            )
+                # save the model to file
+                filepath = model_out_path / f"{model_name}.pkl"
+                logger.info(f"Saving the model to {filepath}")
+                save_model_to_file(model, filepath)
 
-            # save the model to file
-            filepath = model_out_path / f"{model_name}.pkl"
-            logger.info(f"Saving the model to {filepath}")
-            save_model_to_file(model, filepath)
-
-            accuracy, precision, recall, f1 = evaluate_model(model, X_test, y_test)
-            logger.info(
-                f"Accuracy: {accuracy:.4f} - Precision: {precision:.4f} - Recall: {recall:.4f} - F1-score: {f1:.4f}"
-            )
-            wandb.log(
-                {
-                    "iteration": 0,
-                    "accuracy": accuracy,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1": f1,
-                }
-            )
+                evaluate_model(
+                    model, X_test, y_test, class_list, iteration=0, rotation=False
+                )
 
             logger.info("Starting rotation loop")
             for iteration_idx in range(1, GLOBAL_CONFIG.get("rotation_iters") + 1):
@@ -186,28 +203,28 @@ if __name__ == "__main__":
                     X_test_rotated,
                 ) = apply_random_rotation(X_train=X_train, X_test=X_test)
 
-                logger.info(f"Training {model_name} with rotation")
-                model = train_model(
-                    model_init=init_method,
-                    hyperparams=model_hyperparams,
-                    train_config=train_config,
-                    X_train=X_train_rotated,
-                    y_train=y_train,
-                )
-                accuracy, precision, recall, f1 = evaluate_model(
-                    model, X_test_rotated, y_test
-                )
-                logger.info(
-                    f"Accuracy: {accuracy:.4f} - Precision: {precision:.4f} - Recall: {recall:.4f} - F1-score: {f1:.4f}"
-                )
-                wandb.log(
-                    {
-                        "iteration": iteration_idx,
-                        "accuracy": accuracy,
-                        "precision": precision,
-                        "recall": recall,
-                        "f1": f1,
-                    }
-                )
-
-            wandb.finish()
+                with wandb.init(
+                    **WANDB_CONFIG,
+                    config={
+                        "dataset": data_name,
+                        "model": model_name,
+                        "rotation": iteration_idx,
+                    },
+                ):
+                    logger.info(f"Training {model_name} with rotation")
+                    wandb.config.update({"rotation": iteration_idx})
+                    model = train_model(
+                        model_init=init_method,
+                        hyperparams=model_hyperparams,
+                        train_config=train_config,
+                        X_train=X_train_rotated,
+                        y_train=y_train,
+                    )
+                    evaluate_model(
+                        model,
+                        X_test_rotated,
+                        y_test,
+                        class_list,
+                        iteration=iteration_idx,
+                        rotation=True,
+                    )

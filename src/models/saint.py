@@ -184,4 +184,4 @@ class SAINTModel:
                 y_preds = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
                 preds = torch.cat([preds, y_preds], dim=0)
 
-        return preds.cpu().numpy()
+        return preds.squeeze().cpu().numpy()

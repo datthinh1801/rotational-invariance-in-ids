@@ -12,6 +12,7 @@ DATA_CONFIG = {
                 "Sub_Cat",
             ],
             "target": "Target",
+            "classes": ["Benign", "Malicious"],
         },
         {
             "name": "CIC-DDoS-2019",
@@ -24,7 +25,9 @@ DATA_CONFIG = {
                 "SimillarHTTP",
             ],
             "target": "Target",
+            "classes": ["Benign", "Malicious"],
         },
+        # drop this dataset due to extreme imbalance
         {
             "name": "BOT-IoT",
             "path": "data/BOT-IoT_final_max_1M.csv",
@@ -38,18 +41,21 @@ DATA_CONFIG = {
                 "subcategory",
             ],
             "target": "Target",
+            "classes": ["Benign", "Malicious"],
         },
         {
             "name": "CIC-IDS-2017",
             "path": "data/CIC-IDS-2017_final_max_1M.csv",
             "dropped_cols": ["Flow ID", "Source IP", "Destination IP", "Timestamp"],
             "target": "Target",
+            "classes": ["Benign", "Malicious"],
         },
         {
             "name": "CIC-IDS-2018",
             "path": "data/CIC-IDS-2018_final_max_1M.csv",
             "dropped_cols": ["Timestamp"],
             "target": "Target",
+            "classes": ["Benign", "Malicious"],
         },
     ],
 }

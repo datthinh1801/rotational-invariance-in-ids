@@ -1,17 +1,19 @@
 import ipdb
 import pandas as pd
 import numpy as np
+
 from scipy.stats import special_ortho_group
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectFromModel
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.preprocessing import MinMaxScaler
 
 
 def preprocess_data(
     X: pd.DataFrame,
     y: pd.Series,
+    class_list: list,
     drop_cols: list = None,
     seed=None,
 ):
@@ -39,10 +41,13 @@ def preprocess_data(
     X = scaler.fit_transform(X)
 
     # label-encode the target column
-    label_encoder = LabelEncoder()
-    y = label_encoder.fit_transform(y)
+    mapping = mapping = {
+        class_name: index for index, class_name in enumerate(class_list)
+    }
+    y = np.vectorize(mapping.get)(y)
+    y = np.reshape(y, -1)
 
-    return X, y, label_encoder
+    return X, y
 
 
 def feature_selection(
