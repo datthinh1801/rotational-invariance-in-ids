@@ -1,9 +1,7 @@
 import logging
 
 from pathlib import Path
-from datetime import datetime
 
-import ipdb
 import wandb
 import pandas as pd
 import colorlog
@@ -121,6 +119,7 @@ def evaluate_model(
                 "iteration": iteration,
             }
         )
+    return accuracy
 
 
 if __name__ == "__main__":
@@ -131,7 +130,7 @@ if __name__ == "__main__":
 
     seed = GLOBAL_CONFIG.get("seed")
     test_size = GLOBAL_CONFIG.get("test_size")
-    wandb_run_name_suffix = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    project_name = WANDB_CONFIG.get("project")
 
     # loop over all datasets
     logger.info("Reading data configurations")
@@ -165,54 +164,60 @@ if __name__ == "__main__":
         # load model
         model_factory = ModelFactory()
         for model_name, init_method in model_factory.loop_model():
-            WANDB_CONFIG["name"] = f"{data_name}_{model_name}_{wandb_run_name_suffix}"
-
             # init model
             model_config = MODEL_CONFIG.get(model_name, {})
             model_hyperparams = model_config.get("hyperparams", {})
             train_config = model_config.get("train_config", {})
 
+            # NO ROTATION
             with wandb.init(
-                **WANDB_CONFIG,
-                config={"dataset": data_name, "model": model_name, "rotation": 0},
+                project=project_name,
+                config={"dataset": data_name, "model": model_name, "rotation": False},
             ):
+                best_model = None
+                best_acc = 0
+
                 # train without rotation
                 logger.info(f"Training {model_name} without rotation")
-                model = train_model(
-                    model_init=init_method,
-                    hyperparams=model_hyperparams,
-                    train_config=train_config,
-                    X_train=X_train,
-                    y_train=y_train,
-                )
+                for i in range(GLOBAL_CONFIG.get("rotation_iters")):
+                    logger.info(f"Training {model_name} without rotation #{i}")
+                    model = train_model(
+                        model_init=init_method,
+                        hyperparams=model_hyperparams,
+                        train_config=train_config,
+                        X_train=X_train,
+                        y_train=y_train,
+                    )
+                    acc = evaluate_model(
+                        model, X_test, y_test, class_list, iteration=i, rotation=False
+                    )
+                    if acc > best_acc:
+                        best_acc = acc
+                        best_model = model
 
                 # save the model to file
                 filepath = model_out_path / f"{model_name}.pkl"
                 logger.info(f"Saving the model to {filepath}")
-                save_model_to_file(model, filepath)
+                save_model_to_file(best_model, filepath)
 
-                evaluate_model(
-                    model, X_test, y_test, class_list, iteration=0, rotation=False
-                )
-
+            # ROTATION
             logger.info("Starting rotation loop")
-            for iteration_idx in range(1, GLOBAL_CONFIG.get("rotation_iters") + 1):
-                logger.info(f"Rotating iteration: {iteration_idx}")
-                (
-                    X_train_rotated,
-                    X_test_rotated,
-                ) = apply_random_rotation(X_train=X_train, X_test=X_test)
+            with wandb.init(
+                project=project_name,
+                config={
+                    "dataset": data_name,
+                    "model": model_name,
+                    "rotation": True,
+                },
+            ):
+                for i in range(GLOBAL_CONFIG.get("rotation_iters")):
+                    logger.info(f"Rotating iteration: {i}")
+                    (
+                        X_train_rotated,
+                        X_test_rotated,
+                    ) = apply_random_rotation(X_train=X_train, X_test=X_test)
 
-                with wandb.init(
-                    **WANDB_CONFIG,
-                    config={
-                        "dataset": data_name,
-                        "model": model_name,
-                        "rotation": iteration_idx,
-                    },
-                ):
-                    logger.info(f"Training {model_name} with rotation")
-                    wandb.config.update({"rotation": iteration_idx})
+                    logger.info(f"Training {model_name} with rotation #{i}")
                     model = train_model(
                         model_init=init_method,
                         hyperparams=model_hyperparams,
@@ -225,6 +230,6 @@ if __name__ == "__main__":
                         X_test_rotated,
                         y_test,
                         class_list,
-                        iteration=iteration_idx,
+                        iteration=i,
                         rotation=True,
                     )
