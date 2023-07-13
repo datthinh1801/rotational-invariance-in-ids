@@ -5,15 +5,14 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 
 
-def data_prep_openml(X_train, y_train):
+def data_prep_openml(X_train, y_train, seed: int = None):
     cat_idxs, cont_idxs = get_column_types(X_train)
     cat_dims = compute_cat_dims(X_train, cat_idxs)
 
     train_mean, train_std = compute_train_stats(X_train, cont_idxs)
+    train_nan_mask = compute_nan_mask(X_train)
 
-    nan_mask = compute_nan_mask(X_train)
-
-    X_train, y_train = data_split(X_train, y_train, nan_mask)
+    X_train, y_train = data_split(X_train, y_train, train_nan_mask)
 
     return (
         cat_dims,

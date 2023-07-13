@@ -9,7 +9,7 @@ from .utils import save_model_to_file, load_model_from_file
 
 # Define the MLP model
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, output_size):
         super(MLP, self).__init__()
         self.model_name = "mlp"
         self.fc1 = nn.Linear(input_size, hidden_size)
@@ -17,7 +17,7 @@ class MLP(nn.Module):
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.bn2 = nn.BatchNorm1d(hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 1)
+        self.fc3 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         out = self.fc1(x)
@@ -46,16 +46,16 @@ class MLPModel:
         lr: float = 0.001,
     ):
         input_size = X_train.shape[1]
-        self.model = MLP(input_size=input_size, hidden_size=self.hidden_size).to(
-            self.device
-        )
+        self.model = MLP(
+            input_size=input_size, hidden_size=self.hidden_size, output_size=1
+        ).to(self.device)
         self.batch_size = batch_size
 
         X_train = torch.from_numpy(X_train).to(self.device).to(torch.float32)
         y_train = torch.from_numpy(y_train).to(self.device).to(torch.float32)
 
         criterion = nn.BCEWithLogitsLoss().to(self.device)
-        optimizer = optim.AdamW(self.model.parameters(), lr=lr)
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         max_acc = 0
         best_model_path = Path(f"{self.model_name}_best.pkl")
@@ -74,6 +74,7 @@ class MLPModel:
 
                 # Forward pass
                 outputs = self.model(inputs).squeeze()
+
                 loss = criterion(outputs, targets)
 
                 # Backward pass and optimization
@@ -85,7 +86,7 @@ class MLPModel:
                 running_loss += loss.item()
 
                 # calculate accuracy for the current batch
-                predicted_labels = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
+                predicted_labels = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == targets).sum()
 
             # Compute epoch statistics
@@ -122,7 +123,7 @@ class MLPModel:
                 inputs = X[i : i + self.batch_size]
                 outputs = self.model(inputs).squeeze()
 
-                y_preds = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
+                y_preds = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
                 preds = torch.cat([preds, y_preds], dim=0)
 
         return preds.cpu().numpy()

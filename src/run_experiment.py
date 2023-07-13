@@ -172,6 +172,7 @@ if __name__ == "__main__":
             # NO ROTATION
             with wandb.init(
                 project=project_name,
+                name=f"{data_name}_{model_name}_no_rot",
                 config={"dataset": data_name, "model": model_name, "rotation": False},
             ):
                 best_model = None
@@ -204,6 +205,7 @@ if __name__ == "__main__":
             logger.info("Starting rotation loop")
             with wandb.init(
                 project=project_name,
+                name=f"{data_name}_{model_name}_rot",
                 config={
                     "dataset": data_name,
                     "model": model_name,

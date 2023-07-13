@@ -4,8 +4,9 @@ import ipdb
 
 from pathlib import Path
 
+import torch.optim as optim
+
 from torch import nn
-from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from ipdb import set_trace
 from sklearn.metrics import accuracy_score
@@ -119,7 +120,7 @@ class SAINTModel:
         self.model.to(self.device)
 
         criterion = nn.BCEWithLogitsLoss().to(self.device)
-        optimizer = AdamW(self.model.parameters(), lr=lr)
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         max_acc = 0
         best_model_path = Path(f"{self.model_name}_best.pkl")
@@ -135,21 +136,23 @@ class SAINTModel:
 
                 y_reps, y_gts = self.embed_input(data)
 
-                y_outs = self.model.mlpfory(y_reps)
-                y_gts = y_gts.to(torch.float32)
+                y_outs = self.model.mlpfory(y_reps).squeeze()
+                y_gts = y_gts.to(torch.float32).squeeze()
 
                 loss = criterion(y_outs, y_gts)
                 loss.backward()
                 optimizer.step()
+
                 running_loss += loss.item()
 
-                predicted_labels = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
+                predicted_labels = (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == y_gts).sum()
 
-            epoch_accuracy = running_corrects / X_train["data"].shape[0]
-            epoch_loss = running_loss / (X_train["data"].shape[0] / batch_size)
+            epoch_accuracy = running_corrects / len(trainloader.dataset)
+            epoch_loss = running_loss / (len(trainloader.dataset) / batch_size)
+
             print(
-                f"Epoch {epoch}/{epochs} - loss value: {epoch_loss:.4f} - accuracy: {epoch_accuracy:.4f}"
+                f"Epoch {epoch}/{epochs} - loss: {epoch_loss:.4f} - accuracy: {epoch_accuracy:.4f}"
             )
 
             if epoch_accuracy > max_acc:
@@ -181,7 +184,7 @@ class SAINTModel:
                 y_reps, _ = self.embed_input(data)
                 y_outs = self.model.mlpfory(y_reps)
 
-                y_preds = (torch.sigmoid(y_outs) > 0.5).to(torch.float32)
+                y_preds = (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)
                 preds = torch.cat([preds, y_preds], dim=0)
 
         return preds.squeeze().cpu().numpy()

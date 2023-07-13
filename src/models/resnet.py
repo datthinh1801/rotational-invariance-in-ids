@@ -21,16 +21,23 @@ class ResNet:
 
         # num_classes is set to 1 to be compatible with the BCEWithLogitLoss
         # which requires num_classes=1 for single-label binary classification
-        self.model = timm.create_model("resnet18", pretrained=False, num_classes=1).to(
-            self.device
-        )
+        self.num_classes = 1
+        self.model = timm.create_model(
+            "resnet18", pretrained=False, num_classes=self.num_classes
+        ).to(self.device)
 
     def _process_input(self, X):
         n_samples, n_features = X.shape
+
+        x = int(np.ceil(np.sqrt(n_features / 3)))
+        target_n_features = 3 * x * x
+
+        if n_features < target_n_features:
+            padding = target_n_features - n_features
+            X = np.pad(X, [(0, 0), (0, padding)], mode="constant")
+
+        X = X.reshape((n_samples, 3, x, x))
         X = torch.from_numpy(X).to(self.device).to(torch.float32)
-        X = X.reshape(n_samples, 1, n_features)
-        X = torch.nn.functional.pad(X, (0, 300 - n_features), value=0)
-        X = X.reshape(-1, 3, 10, 10)
         return X
 
     def fit(self, X, y, epochs: int = 30, batch_size: int = 1024, lr: float = 0.001):
@@ -40,7 +47,7 @@ class ResNet:
 
         # Define the loss function and optimizer
         criterion = nn.BCEWithLogitsLoss().to(self.device)
-        optimizer = optim.AdamW(self.model.parameters(), lr=lr)
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         self.model.train()
 
@@ -64,7 +71,7 @@ class ResNet:
                 optimizer.step()
                 running_loss += loss.item()
 
-                predicted_labels = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
+                predicted_labels = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
                 running_corrects += (predicted_labels == labels).sum()
 
             epoch_accuracy = running_corrects / X.shape[0]
@@ -98,7 +105,7 @@ class ResNet:
                 inputs = X[i : i + self.batch_size]
                 outputs = self.model(inputs).squeeze()
 
-                y_preds = (torch.sigmoid(outputs) > 0.5).to(torch.float32)
+                y_preds = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
                 preds = torch.cat([preds, y_preds], dim=0)
 
         return preds.squeeze().cpu().numpy()
