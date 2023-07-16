@@ -59,12 +59,12 @@ class SAINTModel:
         return y_reps, y_gts
 
     def fit(
-        self,
-        X_train,
-        y_train,
-        lr: float = 0.001,
-        epochs: int = 50,
-        batch_size: int = 256,
+            self,
+            X_train,
+            y_train,
+            lr: float = 0.001,
+            epochs: int = 50,
+            batch_size: int = 256,
     ):
         # preprocessing the dataset specifically for SAINT
         (
@@ -72,11 +72,13 @@ class SAINTModel:
             cat_idxs,
             con_idxs,
             X_train,
+            X_valid,
             y_train,
+            y_valid,
             train_mean,
             train_std,
         ) = data_prep_openml(X_train, y_train)
-        continuous_mean_std = np.array([train_mean, train_std]).astype(np.float32)
+        # continuous_mean_std = np.array([train_mean, train_std]).astype(np.float32)
 
         # save to the object to use in inference later
         self.cat_idxs = cat_idxs
@@ -93,8 +95,11 @@ class SAINTModel:
             self.embedding_size = min(32, self.embedding_size)
             self.ff_dropout = 0.8
 
-        train_ds = DataSetCatCon(X_train, y_train, cat_idxs, continuous_mean_std)
+        train_ds = DataSetCatCon(X_train, y_train, cat_idxs)
         trainloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+
+        valid_ds = DataSetCatCon(X_valid, y_valid, cat_idxs)
+        validloader = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
 
         n_classes = len(np.unique(y_train["data"][:, 0]))
         self.y_dim = 1 if n_classes == 2 else n_classes
@@ -120,17 +125,14 @@ class SAINTModel:
         self.model.to(self.device)
 
         criterion = nn.BCEWithLogitsLoss().to(self.device)
-        optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        optimizer = optim.AdamW(self.model.parameters(), lr=lr)
 
-        max_acc = 0
-        best_model_path = Path(f"{self.model_name}_best.pkl")
+        best_valid_acc = 0.0
+        best_model_path = Path(f"{self.model_name}_temp.pkl")
 
         for epoch in range(epochs):
+            running_loss = []
             self.model.train()
-
-            running_loss = 0.0
-            running_corrects = 0.0
-
             for data in trainloader:
                 optimizer.zero_grad()
 
@@ -143,29 +145,37 @@ class SAINTModel:
                 loss.backward()
                 optimizer.step()
 
-                running_loss += loss.item()
+                running_loss.append(loss.detach().item())
 
-                predicted_labels = (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)
-                running_corrects += (predicted_labels == y_gts).sum()
+            self.model.eval()
+            valid_corrects = 0.0
+            with torch.no_grad():
+                for valid_data in validloader:
+                    y_reps, y_gts = self.embed_input(valid_data)
+                    y_outs = self.model.mlpfory(y_reps)
 
-            epoch_accuracy = running_corrects / len(trainloader.dataset)
-            epoch_loss = running_loss / (len(trainloader.dataset) / batch_size)
+                    y_preds = (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)
+                    valid_corrects += (y_preds == y_gts).sum()
 
+            epoch_loss = torch.mean(torch.tensor(running_loss).to(self.device))
+            epoch_valid_accuracy = valid_corrects / len(validloader.dataset)
             print(
-                f"Epoch {epoch}/{epochs} - loss: {epoch_loss:.4f} - accuracy: {epoch_accuracy:.4f}"
+                f"Epoch {epoch + 1}/{epochs} - loss: {epoch_loss:.4f} - valid accuracy: {epoch_valid_accuracy:.4f}"
             )
 
-            if epoch_accuracy > max_acc:
-                max_acc = epoch_accuracy
+            if epoch_valid_accuracy > best_valid_acc:
+                best_valid_acc = epoch_valid_accuracy
+                print("Saving checkpoint")
                 save_model_to_file(self, best_model_path)
 
         try:
-            logger.info("Cleaning up CUDA memory")
+            print("Cleaning up CUDA memory")
             torch.cuda.empty_cache()
         except:
             pass
 
         if best_model_path.exists():
+            print("Loading best model from checkpoint")
             self = load_model_from_file(best_model_path)
             best_model_path.unlink()
 
@@ -184,7 +194,8 @@ class SAINTModel:
                 y_reps, _ = self.embed_input(data)
                 y_outs = self.model.mlpfory(y_reps)
 
-                y_preds = (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)
-                preds = torch.cat([preds, y_preds], dim=0)
+                preds = torch.cat(
+                    [preds, (torch.sigmoid(y_outs) >= 0.5).to(torch.float32)], dim=0
+                )
 
         return preds.squeeze().cpu().numpy()

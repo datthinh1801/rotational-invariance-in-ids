@@ -4,16 +4,17 @@ import timm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 from pathlib import Path
-from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 
 from .utils import save_model_to_file, load_model_from_file
 
 
 class ResNet:
     def __init__(
-        self,
+            self,
     ):
         self.model_name = "resnet"
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,25 +43,27 @@ class ResNet:
 
     def fit(self, X, y, epochs: int = 30, batch_size: int = 1024, lr: float = 0.001):
         self.batch_size = batch_size
-        X = self._process_input(X)
-        y = torch.from_numpy(y).to(self.device).to(torch.float32)
+        X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.15)
+
+        X_train = self._process_input(X_train)
+        y_train = torch.from_numpy(y_train).to(self.device).float()
+        X_valid = self._process_input(X_valid)
+        y_valid = torch.from_numpy(y_valid).to(self.device).float()
 
         # Define the loss function and optimizer
         criterion = nn.BCEWithLogitsLoss().to(self.device)
-        optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        optimizer = optim.AdamW(self.model.parameters(), lr=lr)
+
+        best_valid_acc = 0.0
+        best_model_path = Path(f"{self.model_name}_temp.pkl")
 
         self.model.train()
-
-        max_acc = 0
-        best_model_path = Path(f"{self.model_name}_best.pkl")
-
         for epoch in range(epochs):
-            running_loss = 0.0
-            running_corrects = 0.0
+            running_loss = []
 
-            for i in range(0, len(X), batch_size):
-                inputs = X[i : i + batch_size]
-                labels = y[i : i + batch_size]
+            for i in range(0, len(X_train), batch_size):
+                inputs = X_train[i: i + batch_size]
+                labels = y_train[i: i + batch_size]
 
                 optimizer.zero_grad()
 
@@ -69,28 +72,35 @@ class ResNet:
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                running_loss += loss.item()
+                running_loss.append(loss.detach().item())
 
-                predicted_labels = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
-                running_corrects += (predicted_labels == labels).sum()
+            self.model.eval()
+            valid_corrects = 0.0
+            with torch.no_grad():
+                for i in range(0, len(X_valid), batch_size):
+                    inputs = X_valid[i: i + batch_size]
+                    labels = y_valid[i: i + batch_size]
+                    outputs = self.model(inputs).squeeze()
+                    preds = (torch.sigmoid(outputs) >= 0.5).float()
+                    valid_corrects += (preds == labels).sum()
 
-            epoch_accuracy = running_corrects / X.shape[0]
-            epoch_loss = running_loss / (X.shape[0] / batch_size)
-            print(
-                f"Epoch {epoch}/{epochs} - loss value: {epoch_loss} - accuracy: {epoch_accuracy}"
-            )
+            epoch_loss = torch.mean(torch.tensor(running_loss).to(self.device))
+            epoch_valid_accuracy = valid_corrects / len(X_valid)
+            print(f"Epoch {epoch + 1}/{epochs} - loss: {epoch_loss:.4f} - valid accuracy: {epoch_valid_accuracy:.4f}")
 
-            if epoch_accuracy > max_acc:
-                max_acc = epoch_accuracy
+            if epoch_valid_accuracy > best_valid_acc:
+                best_valid_acc = epoch_valid_accuracy
+                print("Saving checkpoint")
                 save_model_to_file(self, best_model_path)
 
         try:
-            logger.info("Cleaning up CUDA memory")
+            print("Cleaning up CUDA memory")
             torch.cuda.empty_cache()
         except:
             pass
 
         if best_model_path.exists():
+            print("Loading best model from checkpoint")
             self = load_model_from_file(best_model_path)
             best_model_path.unlink()
 
@@ -99,13 +109,13 @@ class ResNet:
 
         self.model.eval()
         preds = torch.empty(0).to(self.device)
-
         with torch.no_grad():
             for i in range(0, len(X), self.batch_size):
-                inputs = X[i : i + self.batch_size]
+                inputs = X[i: i + self.batch_size]
                 outputs = self.model(inputs).squeeze()
 
-                y_preds = (torch.sigmoid(outputs) >= 0.5).to(torch.float32)
-                preds = torch.cat([preds, y_preds], dim=0)
+                preds = torch.cat(
+                    [preds, (torch.sigmoid(outputs) >= 0.5).to(torch.float32)], dim=0
+                )
 
         return preds.squeeze().cpu().numpy()

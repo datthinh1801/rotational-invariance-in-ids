@@ -12,14 +12,14 @@ from .mlp import MLPModel
 class ModelFactory:
     def __init__(self) -> None:
         self.clf_table = {
+            "saint": SAINTModel,
+            "resnet": ResNet,
+            "mlp": MLPModel,
             "xgb": XGBClassifier,
             "catboost": CatBoostClassifier,
             "lgbm": LGBMClassifier,
             "dt": DecisionTreeClassifier,
             "rf": RandomForestClassifier,
-            "saint": SAINTModel,
-            "resnet": ResNet,
-            "mlp": MLPModel,
         }
 
     def loop_model(self):

@@ -3,26 +3,7 @@ import pandas as pd
 
 from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
-
-
-def data_prep_openml(X_train, y_train, seed: int = None):
-    cat_idxs, cont_idxs = get_column_types(X_train)
-    cat_dims = compute_cat_dims(X_train, cat_idxs)
-
-    train_mean, train_std = compute_train_stats(X_train, cont_idxs)
-    train_nan_mask = compute_nan_mask(X_train)
-
-    X_train, y_train = data_split(X_train, y_train, train_nan_mask)
-
-    return (
-        cat_dims,
-        cat_idxs,
-        cont_idxs,
-        X_train,
-        y_train,
-        train_mean,
-        train_std,
-    )
+from sklearn.model_selection import train_test_split
 
 
 def get_column_types(X):
@@ -66,6 +47,34 @@ def data_split(X, y, nan_mask):
 
     y_d = {"data": y.reshape(-1, 1)}
     return x_d, y_d
+
+
+def data_prep_openml(X_train, y_train, seed: int = None):
+    cat_idxs, cont_idxs = get_column_types(X_train)
+    cat_dims = compute_cat_dims(X_train, cat_idxs)
+
+    X_train, X_valid, y_train, y_valid = train_test_split(
+        X_train, y_train, test_size=0.15, random_state=seed
+    )
+
+    train_mean, train_std = compute_train_stats(X_train, cont_idxs)
+    train_nan_mask = compute_nan_mask(X_train)
+    valid_nan_mask = compute_nan_mask(X_valid)
+
+    X_train, y_train = data_split(X_train, y_train, train_nan_mask)
+    X_valid, y_valid = data_split(X_valid, y_valid, valid_nan_mask)
+
+    return (
+        cat_dims,
+        cat_idxs,
+        cont_idxs,
+        X_train,
+        X_valid,
+        y_train,
+        y_valid,
+        train_mean,
+        train_std,
+    )
 
 
 class DataSetCatCon(Dataset):
