@@ -59,12 +59,12 @@ class SAINTModel:
         return y_reps, y_gts
 
     def fit(
-            self,
-            X_train,
-            y_train,
-            lr: float = 0.001,
-            epochs: int = 50,
-            batch_size: int = 256,
+        self,
+        X_train,
+        y_train,
+        lr: float = 0.001,
+        epochs: int = 50,
+        batch_size: int = 256,
     ):
         # preprocessing the dataset specifically for SAINT
         (

@@ -1,3 +1,3 @@
 WANDB_CONFIG = {
-    "project": "rotational-invariance-in-intrusion-detection",
+    "project": "rotational-invariance-in-intrusion-detection-full-dataset",
 }

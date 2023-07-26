@@ -43,11 +43,11 @@ def create_logger():
 
 
 def train_model(
-        model_init,
-        hyperparams: dict,
-        train_config: dict,
-        X_train,
-        y_train,
+    model_init,
+    hyperparams: dict,
+    train_config: dict,
+    X_train,
+    y_train,
 ):
     model = model_init(**hyperparams)
     model.fit(X_train, y_train, **train_config)
@@ -55,7 +55,7 @@ def train_model(
 
 
 def evaluate_model(
-        model, X_test, y_test, class_list, iteration, rotation: bool = False
+    model, X_test, y_test, class_list, iteration, rotation: bool = False
 ):
     """
     Evaluate a model on test data and calculate accuracy, precision, recall, and f1 score.
@@ -146,8 +146,8 @@ if __name__ == "__main__":
         )
 
         # feature selection
-        logger.info("Selecting best features")
-        X, y = feature_selection(X, y, seed=seed)
+        # logger.info("Selecting best features")
+        # X, y = feature_selection(X, y, seed=seed)
 
         # train test split
         logger.info("Splitting train/test sets")
@@ -165,9 +165,9 @@ if __name__ == "__main__":
 
             # NO ROTATION
             with wandb.init(
-                    project=project_name,
-                    name=f"{data_name}_{model_name}_no_rot",
-                    config={"dataset": data_name, "model": model_name, "rotation": False},
+                project=project_name,
+                name=f"{data_name}_{model_name}_no_rot",
+                config={"dataset": data_name, "model": model_name, "rotation": False},
             ):
                 best_model = None
                 best_acc = 0
@@ -198,13 +198,13 @@ if __name__ == "__main__":
             # ROTATION
             logger.info("Starting rotation loop")
             with wandb.init(
-                    project=project_name,
-                    name=f"{data_name}_{model_name}_rot",
-                    config={
-                        "dataset": data_name,
-                        "model": model_name,
-                        "rotation": True,
-                    },
+                project=project_name,
+                name=f"{data_name}_{model_name}_rot",
+                config={
+                    "dataset": data_name,
+                    "model": model_name,
+                    "rotation": True,
+                },
             ):
                 for i in range(GLOBAL_CONFIG.get("rotation_iters")):
                     logger.info(f"Rotating iteration: {i}")
