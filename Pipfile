@@ -17,6 +17,7 @@ numpy = "*"
 einops = "*"
 torch = "*"
 seaborn = "*"
+matplotlib = "*"
 
 [dev-packages]
 ipdb = "*"
