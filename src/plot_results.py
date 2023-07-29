@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
+import ipdb
 
 
 def extract_data(df, col):
@@ -53,6 +54,9 @@ def plot_by_metrics():
         fig, axs = plt.subplots(2, 5, figsize=(20, 8), dpi=300)
         axs = axs.ravel()
 
+        # Create an empty DataFrame to store the statistics for all rotations of the dataset
+        all_rotation_stats = pd.DataFrame()
+
         for j, (rotation, rotation_group) in enumerate(
             metric_group.groupby("rotation")
         ):
@@ -69,8 +73,24 @@ def plot_by_metrics():
                 ax.set_ylabel(f"{rotation} {metric}")
 
                 boxplot_data.boxplot(
-                    ax=ax, grid=False, showfliers=False, showmeans=True, meanline=True
+                    ax=ax, grid=False, showfliers=True, showmeans=True, meanline=True
                 )
+
+                # Calculate statistics (median, mean, etc.) and store them in a DataFrame
+                boxplot_stats = boxplot_data.describe().transpose()
+                boxplot_stats.reset_index(inplace=True)
+                boxplot_stats.rename(columns={"index": "Model"}, inplace=True)
+
+                # Add a new column for the rotation
+                boxplot_stats["Rotation"] = rotation
+                boxplot_stats["Dataset"] = dataset
+
+                # Append the statistics to the DataFrame containing all rotations of the dataset
+                all_rotation_stats = pd.concat([all_rotation_stats, boxplot_stats])
+
+        # Export combined statistics to a CSV file
+        output_filename = f"boxplots/{metric}_stats.csv"
+        all_rotation_stats.to_csv(output_filename, index=False)
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
